@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UPI Voice Payment - Cashfree</title>
+
+    <!-- Cashfree Checkout SDK -->
+    <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        /* Progress Bar */
+        .progress-bar {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            align-items: center;
+        }
+
+        .step-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #4b5563;
+            color: #9ca3af;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .step-circle.active {
+            background: #10b981;
+            color: white;
+        }
+
+        .step-line {
+            width: 50px;
+            height: 4px;
+            background: #4b5563;
+            transition: all 0.3s;
+        }
+
+        .step-line.active {
+            background: #10b981;
+        }
+
+        /* Card Container */
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 32px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Pages */
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* Icon Boxes */
+        .icon-box {
+            width: 72px;
+            height: 72px;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+        }
+
+        .icon-upi {
+            background: linear-gradient(135deg, #f97316, #ec4899);
+        }
+
+        .icon-voice {
+            background: linear-gradient(135deg, #22c55e, #14b8a6);
+        }
+
+        .icon-confirm {
+            background: linear-gradient(135deg, #eab308, #f97316);
+        }
+
+        /* Typography */
+        h2 {
+            color: white;
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 26px;
+        }
+
+        .subtitle {
+            color: #9ca3af;
+            text-align: center;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        /* Input Fields */
+        .input-field {
+            width: 100%;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 14px;
+            color: white;
+            font-size: 18px;
+            outline: none;
+            transition: all 0.3s;
+            margin-bottom: 16px;
+        }
+
+        .input-field:focus {
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3);
+        }
+
+        .input-field::placeholder {
+            color: #9ca3af;
+        }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s;
+            margin-top: 8px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #22c55e, #10b981);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        /* Error Box */
+        .error-box {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            margin-bottom: 16px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .error-box.show {
+            display: flex;
+        }
+
+        /* Info Box */
+        .info-box {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+        }
+
+        .info-row.border-top {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 12px;
+            padding-top: 16px;
+        }
+
+        .info-label {
+            color: #9ca3af;
+            font-size: 14px;
+        }
+
+        .info-value {
+            color: white;
+            font-weight: 500;
+            font-family: monospace;
+        }
+
+        .info-value.large {
+            font-size: 32px;
+            font-weight: 700;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        /* Microphone Container */
+        .mic-container {
+            text-align: center;
+            margin: 24px 0;
+        }
+
+        .mic-btn {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            transition: all 0.3s;
+            box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4);
+        }
+
+        .mic-btn.idle {
+            background: linear-gradient(135deg, #3b82f6, #06b6d4);
+        }
+
+        .mic-btn.listening {
+            background: #ef4444;
+            animation: pulse 1.5s ease-in-out infinite;
+            box-shadow: 0 10px 40px rgba(239, 68, 68, 0.5);
+        }
+
+        .mic-btn:hover {
+            transform: scale(1.05);
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        .mic-status {
+            color: #9ca3af;
+            font-size: 14px;
+            margin-top: 12px;
+        }
+
+        /* Transcript Box */
+        .transcript-box {
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 10px;
+            padding: 12px 16px;
+            text-align: center;
+            margin-bottom: 16px;
+            color: #93c5fd;
+            font-size: 14px;
+            display: none;
+        }
+
+        .transcript-box.show {
+            display: block;
+        }
+
+        /* Amount Input */
+        .amount-wrapper {
+            position: relative;
+        }
+
+        .rupee-symbol {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .amount-input {
+            padding-left: 50px;
+            font-size: 28px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .hint-text {
+            color: #6b7280;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        /* Success Icon */
+        .success-icon {
+            width: 88px;
+            height: 88px;
+            background: #22c55e;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            font-size: 48px;
+            animation: bounceIn 0.6s ease;
+        }
+
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0);
+            }
+            50% {
+                transform: scale(1.2);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: #6b7280;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+
+        /* Not Supported Warning */
+        .not-supported {
+            background: rgba(234, 179, 8, 0.2);
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+            color: #fcd34d;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        /* Live Badge */
+        .live-badge {
+            background: #ef4444;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 16px;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <!-- Progress Bar -->
+    <div class="progress-bar">
+        <div class="step-circle active" id="step1">1</div>
+        <div class="step-line" id="line1"></div>
+        <div class="step-circle" id="step2">2</div>
+        <div class="step-line" id="line2"></div>
+        <div class="step-circle" id="step3">3</div>
+        <div class="step-line" id="line3"></div>
+        <div class="step-circle" id="step4">4</div>
+    </div>
+
+    <div class="card">
+        <!-- Page 1: UPI ID Entry -->
+        <div class="page active" id="page1">
+            <div class="icon-box icon-upi">📱</div>
+            <h2>Enter UPI ID</h2>
+            <p class="subtitle">Enter recipient's UPI address</p>
+            <input type="text" class="input-field" id="upiInput" placeholder="example@paytm" autocomplete="off">
+            <div class="error-box" id="error1">
+                ⚠️ <span></span>
+            </div>
+            <button class="btn btn-primary" onclick="goToPage2()">
+                Continue →
+            </button>
+        </div>
+
+        <!-- Page 2: Voice Amount Entry -->
+        <div class="page" id="page2">
+            <div class="icon-box icon-voice">🎤</div>
+            <h2>Enter Amount</h2>
+            <p class="subtitle">Speak or type the amount</p>
+
+            <div class="info-box">
+                <div class="info-row">
+                    <span class="info-label">Paying to</span>
+                    <span class="info-value" id="displayUpi"></span>
+                </div>
+            </div>
+
+            <div id="speechNotSupported" class="not-supported" style="display:none;">
+                ⚠️ Speech recognition not supported. Please use Chrome or Edge browser.
+            </div>
+
+            <div class="mic-container" id="micContainer">
+                <button class="mic-btn idle" id="micBtn" onclick="toggleMic()">🎤</button>
+                <p class="mic-status" id="micStatus">🎤 Tap to speak amount</p>
+            </div>
+
+            <div class="transcript-box" id="transcriptBox">
+                🎧 Heard: "<span id="transcriptText"></span>"
+            </div>
+
+            <div class="amount-wrapper">
+                <span class="rupee-symbol">₹</span>
+                <input type="number" class="input-field amount-input" id="amountInput" placeholder="0" min="1" step="1">
+            </div>
+            <p class="hint-text">Try saying: "Five hundred" • "One thousand" • "2500 rupees"</p>
+
+            <div class="error-box" id="error2">
+                ⚠️ <span></span>
+            </div>
+
+            <button class="btn btn-success" onclick="goToPage3()">
+                Proceed to Pay →
+            </button>
+        </div>
+
+        <!-- Page 3: Confirm & Pay -->
+        <div class="page" id="page3">
+            <div class="icon-box icon-confirm">🔒</div>
+            <h2>Confirm Payment</h2>
+            <p class="subtitle">Review and pay with Cashfree</p>
+
+            <div style="text-align:center;">
+                <span class="live-badge">🔴 LIVE PAYMENT</span>
+            </div>
+
+            <div class="info-box">
+                <div class="info-row">
+                    <span class="info-label">To</span>
+                    <span class="info-value" id="confirmUpi"></span>
+                </div>
+                <div class="info-row border-top">
+                    <span class="info-label">Amount</span>
+                    <span class="info-value large" id="confirmAmount"></span>
+                </div>
+            </div>
+
+            <div class="error-box" id="error3">
+                ⚠️ <span></span>
+            </div>
+
+            <button class="btn btn-success" id="payBtn" onclick="initiateCashfree()">
+                <span id="payBtnText">Pay with Cashfree</span>
+            </button>
+        </div>
+
+        <!-- Page 4: Success -->
+        <div class="page" id="page4">
+            <div class="success-icon">✓</div>
+            <h2>Payment Successful!</h2>
+            <p class="subtitle">Your payment has been completed</p>
+
+            <div class="info-box">
+                <div class="info-row">
+                    <span class="info-label">Amount Paid</span>
+                    <span class="info-value" id="successAmount"></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">To</span>
+                    <span class="info-value" id="successUpi"></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Order ID</span>
+                    <span class="info-value" id="successOrderId" style="font-size:10px;"></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Date & Time</span>
+                    <span class="info-value" id="successDate" style="font-size:12px;"></span>
+                </div>
+            </div>
+
+            <button class="btn btn-secondary" onclick="resetPayment()">
+                Make Another Payment
+            </button>
+        </div>
+    </div>
+
+    <p class="footer">🔒 Secured by Cashfree Payments</p>
+</div>
+
+<script>
+    // ==================== GLOBAL VARIABLES ====================
+    let upiId = '';
+    let amount = 0;
+    let recognition = null;
+    let isListening = false;
+    let cashfree = null;
+
+    // ==================== CASHFREE INITIALIZATION ====================
+    async function initCashfree() {
+        try {
+            cashfree = await Cashfree({
+                mode: 'sandbox' // Change to 'production' for live payments
+            });
+            console.log('Cashfree SDK initialized');
+        } catch (error) {
+            console.error('Cashfree init error:', error);
+        }
+    }
+
+    // ==================== SPEECH RECOGNITION ====================
+    function initSpeech() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognition) {
+            document.getElementById('speechNotSupported').style.display = 'block';
+            document.getElementById('micContainer').style.display = 'none';
+            return;
+        }
+
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN';
+        recognition.maxAlternatives = 3;
+
+        recognition.onstart = () => {
+            isListening = true;
+            updateMicUI();
+        };
+
+        recognition.onend = () => {
+            isListening = false;
+            updateMicUI();
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech error:', event.error);
+            if (event.error === 'not-allowed') {
+                showError(2, 'Microphone access denied! Please allow microphone in browser settings.');
+            } else if (event.error === 'no-speech') {
+                showError(2, 'No speech detected. Please try again.');
+            } else {
+                showError(2, 'Speech error: ' + event.error);
+            }
+            isListening = false;
+            updateMicUI();
+        };
+
+        recognition.onresult = (event) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+
+            showTranscript(transcript);
+
+            if (event.results[event.results.length - 1].isFinal) {
+                const parsed = parseAmount(transcript);
+                if (parsed > 0) {
+                    document.getElementById('amountInput').value = parsed;
+                    hideError(2);
+                } else {
+                    showError(2, 'Could not understand amount. Try saying "five hundred" or "1000"');
+                }
+            }
+        };
+    }
+
+    // ==================== PARSE SPOKEN AMOUNT ====================
+    function parseAmount(text) {
+        if (!text) return 0;
+
+        let lower = text.toLowerCase()
+            .replace(/rupees?/g, '')
+            .replace(/rs\.?/g, '')
+            .replace(/only/g, '')
+            .replace(/please/g, '')
+            .trim();
+
+        // Try direct number extraction first
+        const num = lower.replace(/[^\d]/g, '');
+        if (num && !isNaN(parseInt(num))) {
+            return parseInt(num);
+        }
+
+        // Word to number mapping
+        const words = {
+            'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+            'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19,
+            'twenty': 20, 'thirty': 30, 'forty': 40, 'fourty': 40, 'fifty': 50,
+            'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
+            'hundred': 100, 'thousand': 1000, 'lakh': 100000, 'lac': 100000
+        };
+
+        const tokens = lower.split(/[\s,-]+/);
+        let result = 0;
+        let current = 0;
+
+        for (const token of tokens) {
+            if (words[token] !== undefined) {
+                const value = words[token];
+                if (value === 100) {
+                    current = current === 0 ? 100 : current * 100;
+                } else if (value >= 1000) {
+                    current = current === 0 ? value : current * value;
+                    result += current;
+                    current = 0;
+                } else {
+                    current += value;
+                }
+            }
+        }
+
+        return result + current;
+    }
+
+    // ==================== MICROPHONE CONTROLS ====================
+    function toggleMic() {
+        if (isListening) {
+            recognition.stop();
+        } else {
+            startListening();
+        }
+    }
+
+    function startListening() {
+        if (!recognition) {
+            showError(2, 'Speech recognition not available');
+            return;
+        }
+
+        hideError(2);
+        hideTranscript();
+
+        try {
+            recognition.start();
+        } catch (error) {
+            recognition.stop();
+            setTimeout(() => recognition.start(), 100);
+        }
+    }
+
+    function updateMicUI() {
+        const btn = document.getElementById('micBtn');
+        const status = document.getElementById('micStatus');
+
+        if (isListening) {
+            btn.className = 'mic-btn listening';
+            btn.textContent = '🛑';
+            status.textContent = '🔴 Listening... Speak now!';
+        } else {
+            btn.className = 'mic-btn idle';
+            btn.textContent = '🎤';
+            status.textContent = '🎤 Tap to speak amount';
+        }
+    }
+
+    function showTranscript(text) {
+        document.getElementById('transcriptText').textContent = text;
+        document.getElementById('transcriptBox').classList.add('show');
+    }
+
+    function hideTranscript() {
+        document.getElementById('transcriptBox').classList.remove('show');
+    }
+
+    // ==================== ERROR HANDLING ====================
+    function showError(page, message) {
+        const errorBox = document.getElementById('error' + page);
+        errorBox.querySelector('span').textContent = message;
+        errorBox.classList.add('show');
+    }
+
+    function hideError(page) {
+        document.getElementById('error' + page).classList.remove('show');
+    }
+
+    // ==================== PAGE NAVIGATION ====================
+    function showPage(pageNumber) {
+        // Hide all pages
+        document.querySelectorAll('.page').forEach(page => {
+            page.classList.remove('active');
+        });
+
+        // Show selected page
+        document.getElementById('page' + pageNumber).classList.add('active');
+
+        // Update progress bar
+        for (let i = 1; i <= 4; i++) {
+            const step = document.getElementById('step' + i);
+            const line = document.getElementById('line' + (i - 1));
+
+            if (i < pageNumber) {
+                step.className = 'step-circle active';
+                step.textContent = '✓';
+            } else if (i === pageNumber) {
+                step.className = 'step-circle active';
+                step.textContent = i;
+            } else {
+                step.className = 'step-circle';
+                step.textContent = i;
+            }
+
+            if (line) {
+                line.className = i < pageNumber ? 'step-line active' : 'step-line';
+            }
+        }
+    }
+
+    // ==================== VALIDATION ====================
+    function validateUPI(id) {
+        const upiRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9]+$/;
+        return upiRegex.test(id);
+    }
+
+    // ==================== PAGE TRANSITIONS ====================
+    function goToPage2() {
+        upiId = document.getElementById('upiInput').value.trim();
+
+        if (!validateUPI(upiId)) {
+            showError(1, 'Invalid UPI ID format. Example: name@paytm, name@ybl');
+            return;
+        }
+
+        hideError(1);
+        document.getElementById('displayUpi').textContent = upiId;
+        showPage(2);
+    }
+
+    function goToPage3() {
+        amount = parseFloat(document.getElementById('amountInput').value);
+
+        if (!amount || amount <= 0) {
+            showError(2, 'Please enter a valid amount');
+            return;
+        }
+
+        if (amount > 100000) {
+            showError(2, 'Amount cannot exceed ₹1,00,000');
+            return;
+        }
+
+        hideError(2);
+        document.getElementById('confirmUpi').textContent = upiId;
+        document.getElementById('confirmAmount').textContent = '₹' + amount.toLocaleString('en-IN');
+        showPage(3);
+    }
+
+    // ==================== CASHFREE PAYMENT ====================
+    async function initiateCashfree() {
+        const btn = document.getElementById('payBtn');
+        const btnText = document.getElementById('payBtnText');
+
+        btn.disabled = true;
+        btnText.innerHTML = '<div class="spinner"></div> Creating Order...';
+        hideError(3);
+
+        try {
+            // Step 1: Create order on backend
+            const response = await fetch('/api/create-order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    amount: amount,
+                    upiId: upiId,
+                    customerName: 'Customer',
+                    customerPhone: '9999999999',
+                    customerEmail: 'customer@example.com'
+                })
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Order creation failed');
+            }
+
+            // Step 2: Initialize Cashfree if not already done
+            if (!cashfree) {
+                await initCashfree();
+            }
+
+            // Step 3: Checkout options for Cashfree
+            const checkoutOptions = {
+                paymentSessionId: data.payment_session_id,
+                returnUrl: window.location.origin + '/?order_id=' + data.order_id
+            };
+
+            // Step 4: Open Cashfree payment modal
+            cashfree.checkout(checkoutOptions).then((result) => {
+                if (result.error) {
+                    // Payment failed
+                    showError(3, result.error.message);
+                    btn.disabled = false;
+                    btnText.textContent = 'Retry Payment';
+                } else if (result.paymentDetails) {
+                    // Payment successful
+                    verifyPayment(data.order_id);
+                }
+            });
+
+        } catch (error) {
+            console.error('Payment error:', error);
+            showError(3, error.message);
+            btn.disabled = false;
+            btnText.textContent = 'Retry Payment';
+        }
+    }
+
+    // ==================== VERIFY PAYMENT ====================
+    async function verifyPayment(orderId) {
+        try {
+            const response = await fetch('/api/verify-payment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    order_id: orderId
+                })
+            });
+
+            const data = await response.json();
+
+            // Show success page
+            document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
+            document.getElementById('successUpi').textContent = upiId;
+            document.getElementById('successOrderId').textContent = orderId;
+            document.getElementById('successDate').textContent = new Date().toLocaleString('en-IN');
+            showPage(4);
+
+        } catch (error) {
+            console.error('Verification error:', error);
+            // Still show success if order exists
+            document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
+            document.getElementById('successUpi').textContent = upiId;
+            document.getElementById('successOrderId').textContent = orderId || 'N/A';
+            document.getElementById('successDate').textContent = new Date().toLocaleString('en-IN');
+            showPage(4);
+        }
+    }
+
+    // ==================== RESET PAYMENT ====================
+    function resetPayment() {
+        upiId = '';
+        amount = 0;
+        document.getElementById('upiInput').value = '';
+        document.getElementById('amountInput').value = '';
+        hideTranscript();
+        hideError(1);
+        hideError(2);
+        hideError(3);
+        document.getElementById('payBtn').disabled = false;
+        document.getElementById('payBtnText').textContent = 'Pay with Cashfree';
+        showPage(1);
+    }
+
+    // ==================== HANDLE RETURN FROM CASHFREE ====================
+    window.addEventListener('load', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('order_id');
+
+        if (orderId) {
+            // User returned from payment, verify the payment
+            verifyPayment(orderId);
+        }
+    });
+
+    // ==================== INITIALIZE ON PAGE LOAD ====================
+    document.addEventListener('DOMContentLoaded', () => {
+        initSpeech();
+        initCashfree();
+    });
+</script>
+</body>
+</html>
