@@ -568,11 +568,11 @@ let amount = 0;
 let recognition = null;
 let isListening = false;
 let cashfree = null;
+let speechAttempts = 0;
 
 // ==================== CASHFREE INITIALIZATION ====================
 async function initCashfree() {
     try {
-        // Auto-detect environment
         const isProduction = window.location.hostname !== 'localhost' && 
                            window.location.hostname !== '127.0.0.1';
         
@@ -586,90 +586,145 @@ async function initCashfree() {
     }
 }
 
-// ==================== SPEECH RECOGNITION ====================
+// ==================== SPEECH RECOGNITION - ENHANCED ====================
 function initSpeech() {
-    // Check HTTPS
-    const isSecure = window.location.protocol === 'https:' || 
-                     window.location.hostname === 'localhost';
+    console.log('🎤 Initializing speech recognition...');
+    console.log('Protocol:', window.location.protocol);
+    console.log('Hostname:', window.location.hostname);
     
-    if (!isSecure) {
-        console.warn('⚠️ Not HTTPS - speech may not work');
-    }
+    // Check if HTTPS (required for speech on production)
+    const isSecure = window.location.protocol === 'https:' || 
+                     window.location.hostname === 'localhost' ||
+                     window.location.hostname === '127.0.0.1';
+    
+    console.log('Is secure:', isSecure);
 
+    // Check browser support
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
+        console.error('❌ Speech Recognition not supported');
         document.getElementById('speechNotSupported').innerHTML = 
-            '⚠️ Speech not supported. Use Chrome/Edge or type manually.';
+            '⚠️ Voice input not supported in this browser.<br>Please use Chrome or Edge, or type manually.';
         document.getElementById('speechNotSupported').style.display = 'block';
         document.getElementById('micContainer').style.display = 'none';
         return;
     }
 
+    // If not secure, warn but don't block
+    if (!isSecure) {
+        console.warn('⚠️ Not HTTPS - speech may have issues');
+        document.getElementById('speechNotSupported').innerHTML = 
+            '⚠️ Voice input works best on HTTPS. You can still type the amount.';
+        document.getElementById('speechNotSupported').style.display = 'block';
+    }
+
     try {
+        // Create recognition instance
         recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = true;
         recognition.lang = 'en-IN';
-        recognition.maxAlternatives = 3;
+        recognition.maxAlternatives = 5;
 
+        // Event: Started
         recognition.onstart = () => {
+            console.log('🎤 Speech recognition STARTED');
             isListening = true;
+            speechAttempts++;
             updateMicUI();
             hideError(2);
-            console.log('🎤 Listening...');
         };
 
+        // Event: Ended
         recognition.onend = () => {
+            console.log('🎤 Speech recognition ENDED');
             isListening = false;
             updateMicUI();
-            console.log('🎤 Stopped');
         };
 
+        // Event: Error
         recognition.onerror = (event) => {
-            console.error('🎤 Error:', event.error);
+            console.error('🎤 Speech error:', event.error);
+            console.error('Error details:', event);
+            
             isListening = false;
             updateMicUI();
 
+            // Handle different error types
             switch(event.error) {
                 case 'not-allowed':
-                    showError(2, '🎤 Microphone blocked! Please allow mic access in browser settings.');
+                case 'service-not-allowed':
+                    console.error('Microphone permission denied');
+                    showError(2, '🎤 Microphone blocked! Click the 🔒 icon in address bar → Allow microphone → Reload page');
                     document.getElementById('micContainer').style.display = 'none';
                     break;
+                    
                 case 'no-speech':
-                    showError(2, '🔇 No speech heard. Please try again or type manually.');
+                    console.warn('No speech detected');
+                    showError(2, '🔇 No speech detected. Please speak clearly or type the amount.');
+                    // Don't hide mic button - let them try again
                     break;
+                    
                 case 'network':
-                    if (window.location.protocol === 'https:') {
-                        showError(2, '🌐 Network issue. Please try again.');
+                    console.error('Network error - this is the issue');
+                    
+                    // Check if it's first attempt
+                    if (speechAttempts <= 1) {
+                        // Try again automatically
+                        console.log('🔄 Retrying speech recognition...');
+                        setTimeout(() => {
+                            if (!isListening) {
+                                startListening();
+                            }
+                        }, 500);
+                        showError(2, '🔄 Retrying voice input...');
                     } else {
-                        showError(2, '⚠️ Voice needs HTTPS. Please type the amount.');
-                        document.getElementById('micContainer').style.display = 'none';
+                        // After multiple attempts, suggest typing
+                        showError(2, '⚠️ Voice input unavailable. Please type the amount instead.');
+                        console.log('💡 Tip: Voice input requires microphone permissions and stable connection');
                     }
                     break;
+                    
                 case 'audio-capture':
-                    showError(2, '🎤 No microphone found. Please type manually.');
+                    console.error('No microphone found');
+                    showError(2, '🎤 No microphone detected. Please connect a microphone or type manually.');
                     document.getElementById('micContainer').style.display = 'none';
                     break;
+                    
                 case 'aborted':
-                    // Silent
+                    console.log('Speech recognition aborted by user');
+                    // Don't show error - user stopped it
                     break;
+                    
+                case 'language-not-supported':
+                    console.error('Language not supported');
+                    showError(2, '🌐 Language not supported. Please type the amount.');
+                    break;
+                    
                 default:
-                    showError(2, `Error: ${event.error}. Please type amount.`);
+                    console.error('Unknown speech error:', event.error);
+                    showError(2, `⚠️ Voice error: ${event.error}. Please type the amount.`);
             }
         };
 
+        // Event: Result
         recognition.onresult = (event) => {
             let transcript = '';
             let isFinal = false;
+            let confidence = 0;
 
             for (let i = event.resultIndex; i < event.results.length; i++) {
-                transcript += event.results[i][0].transcript;
-                if (event.results[i].isFinal) {
+                const result = event.results[i];
+                transcript += result[0].transcript;
+                confidence = result[0].confidence;
+                
+                if (result.isFinal) {
                     isFinal = true;
                 }
             }
 
+            console.log('🎤 Heard:', transcript, 'Final:', isFinal, 'Confidence:', confidence);
             showTranscript(transcript);
 
             if (isFinal) {
@@ -677,19 +732,61 @@ function initSpeech() {
                 if (parsed > 0) {
                     document.getElementById('amountInput').value = parsed;
                     hideError(2);
-                    console.log('✅ Amount:', parsed);
+                    console.log('✅ Parsed amount:', parsed);
+                    
+                    // Hide transcript after success
+                    setTimeout(() => {
+                        hideTranscript();
+                    }, 2000);
                 } else {
-                    showError(2, '❌ Could not understand. Try: "five hundred" or type it.');
+                    console.warn('Could not parse amount from:', transcript);
+                    showError(2, '❌ Could not understand "' + transcript + '". Try: "five hundred" or type it.');
                 }
             }
         };
 
-        console.log('✅ Speech ready');
+        console.log('✅ Speech recognition initialized successfully');
+        
+        // Test microphone access on page load
+        testMicrophoneAccess();
 
     } catch (error) {
-        console.error('❌ Speech init failed:', error);
+        console.error('❌ Failed to initialize speech:', error);
+        document.getElementById('speechNotSupported').innerHTML = 
+            '⚠️ Voice input initialization failed. Please type manually.';
         document.getElementById('speechNotSupported').style.display = 'block';
         document.getElementById('micContainer').style.display = 'none';
+    }
+}
+
+// ==================== TEST MICROPHONE ACCESS ====================
+async function testMicrophoneAccess() {
+    try {
+        console.log('🧪 Testing microphone access...');
+        
+        // Request microphone permission
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        console.log('✅ Microphone access granted');
+        
+        // Stop the stream immediately
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Show success message
+        hideError(2);
+        
+    } catch (error) {
+        console.error('❌ Microphone access denied:', error);
+        
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            showError(2, '🎤 Please allow microphone access to use voice input. Click 🔒 in address bar → Microphone → Allow');
+            document.getElementById('micContainer').style.display = 'none';
+        } else if (error.name === 'NotFoundError') {
+            showError(2, '🎤 No microphone found. Please connect a microphone or type manually.');
+            document.getElementById('micContainer').style.display = 'none';
+        } else {
+            console.warn('Microphone test failed, but will still try speech recognition');
+        }
     }
 }
 
@@ -703,15 +800,19 @@ function parseAmount(text) {
         .replace(/only/g, '')
         .replace(/please/g, '')
         .replace(/pay/g, '')
+        .replace(/indian/g, '')
         .trim();
 
-    // Direct number
+    console.log('Parsing text:', lower);
+
+    // Try direct number extraction first
     const directNum = lower.replace(/[^\d]/g, '');
     if (directNum && !isNaN(parseInt(directNum))) {
+        console.log('Found direct number:', directNum);
         return parseInt(directNum);
     }
 
-    // Word to number
+    // Word to number mapping
     const words = {
         'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
         'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
@@ -741,21 +842,26 @@ function parseAmount(text) {
         }
     }
 
-    return result + current;
+    const finalAmount = result + current;
+    console.log('Calculated amount:', finalAmount);
+    return finalAmount;
 }
 
 // ==================== MICROPHONE CONTROLS ====================
 function toggleMic() {
     if (isListening) {
+        console.log('Stopping speech recognition');
         recognition.stop();
     } else {
+        console.log('Starting speech recognition');
         startListening();
     }
 }
 
 function startListening() {
     if (!recognition) {
-        showError(2, 'Speech not available. Please type.');
+        console.error('Recognition not initialized');
+        showError(2, 'Voice input not available. Please type the amount.');
         return;
     }
 
@@ -763,14 +869,38 @@ function startListening() {
     hideTranscript();
 
     try {
-        recognition.start();
-    } catch (error) {
-        try {
+        // Stop any existing recognition
+        if (isListening) {
             recognition.stop();
-            setTimeout(() => recognition.start(), 100);
-        } catch (e) {
-            showError(2, 'Cannot start mic. Please type.');
         }
+        
+        // Wait a bit and start
+        setTimeout(() => {
+            try {
+                recognition.start();
+                console.log('Speech recognition start requested');
+            } catch (e) {
+                console.error('Error starting recognition:', e);
+                if (e.name === 'InvalidStateError') {
+                    // Already running, stop and restart
+                    recognition.stop();
+                    setTimeout(() => {
+                        try {
+                            recognition.start();
+                        } catch (e2) {
+                            console.error('Failed to restart:', e2);
+                            showError(2, 'Cannot start voice input. Please type manually.');
+                        }
+                    }, 200);
+                } else {
+                    showError(2, 'Voice input error. Please type the amount.');
+                }
+            }
+        }, 100);
+        
+    } catch (error) {
+        console.error('Error in startListening:', error);
+        showError(2, 'Cannot start voice input. Please type manually.');
     }
 }
 
@@ -842,6 +972,11 @@ function showPage(pageNumber) {
         if (line) {
             line.className = i < pageNumber ? 'step-line active' : 'step-line';
         }
+    }
+    
+    // Reset speech attempts when changing pages
+    if (pageNumber === 2) {
+        speechAttempts = 0;
     }
 }
 
@@ -929,12 +1064,10 @@ async function initiateCashfree() {
         console.log('✅ Order:', data.order_id);
         btnText.innerHTML = '<div class="spinner"></div> Opening Payment...';
 
-        // Initialize Cashfree if needed
         if (!cashfree) {
             await initCashfree();
         }
 
-        // Open payment
         const checkoutOptions = {
             paymentSessionId: data.payment_session_id,
             returnUrl: window.location.origin + '/payment-response?order_id=' + data.order_id,
@@ -965,7 +1098,6 @@ async function initiateCashfree() {
     } catch (error) {
         console.error('❌ Error:', error);
         
-        // Show user-friendly error
         let errorMsg = error.message;
         if (errorMsg.includes('whitelist') || errorMsg.includes('domain')) {
             errorMsg = 'Domain not whitelisted. Please contact support.';
@@ -995,7 +1127,6 @@ async function verifyPayment(orderId) {
         const data = await response.json();
         console.log('📊 Verified:', data);
 
-        // Show success
         document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
         document.getElementById('successUpi').textContent = upiId;
         document.getElementById('successOrderId').textContent = orderId;
@@ -1004,7 +1135,6 @@ async function verifyPayment(orderId) {
 
     } catch (error) {
         console.error('❌ Verify error:', error);
-        // Still show success
         document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
         document.getElementById('successUpi').textContent = upiId;
         document.getElementById('successOrderId').textContent = orderId || 'N/A';
@@ -1017,6 +1147,7 @@ async function verifyPayment(orderId) {
 function resetPayment() {
     upiId = '';
     amount = 0;
+    speechAttempts = 0;
     document.getElementById('upiInput').value = '';
     document.getElementById('amountInput').value = '';
     hideTranscript();
@@ -1044,11 +1175,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Starting app...');
     console.log('🔒 Protocol:', window.location.protocol);
     console.log('🌐 Host:', window.location.hostname);
+    console.log('🌐 Full URL:', window.location.href);
+    
+    // Check browser
+    const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+    const isEdge = /Edg/.test(navigator.userAgent);
+    console.log('Browser:', isChrome ? 'Chrome' : isEdge ? 'Edge' : 'Other');
     
     await initCashfree();
     initSpeech();
     
     console.log('✅ App ready');
+    console.log('💡 Tip: Click microphone → Allow → Speak clearly');
 });
 </script>
 </body>
