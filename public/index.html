@@ -583,6 +583,15 @@
 
     // ==================== SPEECH RECOGNITION ====================
     function initSpeech() {
+        // Check if page is served over HTTPS (required for speech recognition in production)
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            document.getElementById('speechNotSupported').innerHTML = 
+                '⚠️ Speech recognition requires HTTPS. Please enable HTTPS or use manual input.';
+            document.getElementById('speechNotSupported').style.display = 'block';
+            document.getElementById('micContainer').style.display = 'none';
+            return;
+        }
+
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
         if (!SpeechRecognition) {
@@ -609,13 +618,22 @@
 
         recognition.onerror = (event) => {
             console.error('Speech error:', event.error);
+        
+            // Handle specific errors with helpful messages
             if (event.error === 'not-allowed') {
                 showError(2, 'Microphone access denied! Please allow microphone in browser settings.');
             } else if (event.error === 'no-speech') {
-                showError(2, 'No speech detected. Please try again.');
+                showError(2, 'No speech detected. Please try again or type the amount.');
+            } else if (event.error === 'network') {
+                showError(2, 'Network error. Speech recognition requires HTTPS. Please type the amount instead.');
+                // Hide mic button after network error
+                document.getElementById('micContainer').style.display = 'none';
+            } else if (event.error === 'aborted') {
+                // Silent - user stopped recording
             } else {
-                showError(2, 'Speech error: ' + event.error);
+                showError(2, 'Speech error: ' + event.error + '. Please type the amount.');
             }
+        
             isListening = false;
             updateMicUI();
         };
@@ -634,7 +652,7 @@
                     document.getElementById('amountInput').value = parsed;
                     hideError(2);
                 } else {
-                    showError(2, 'Could not understand amount. Try saying "five hundred" or "1000"');
+                    showError(2, 'Could not understand amount. Try saying "five hundred" or type it manually');
                 }
             }
         };
