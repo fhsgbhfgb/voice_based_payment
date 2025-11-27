@@ -1,0 +1,15 @@
+
+{
+  "name": "upi-voice-payment",
+  "version": "1.0.0",
+  "description": "UPI Voice Payment with Razorpay",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "razorpay": "^2.9.2",
+    "dotenv": "^16.3.1"
+  }
+}
