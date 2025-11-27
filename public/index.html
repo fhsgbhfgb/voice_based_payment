@@ -571,35 +571,44 @@
 
     // ==================== CASHFREE INITIALIZATION ====================
     async function initCashfree() {
-        try {
-            cashfree = await Cashfree({
-                mode: 'sandbox' // Change to 'production' for live payments
-            });
-            console.log('Cashfree SDK initialized');
+    try {
+        // Auto-detect environment based on URL
+        const isProduction = window.location.hostname !== 'localhost' && 
+                               window.location.hostname !== '127.0.0.1';
+            
+        cashfree = await Cashfree({
+                mode: isProduction ? 'production' : 'sandbox'
+        });
+            
+        console.log('✅ Cashfree SDK initialized in', isProduction ? 'PRODUCTION' : 'SANDBOX', 'mode');
         } catch (error) {
-            console.error('Cashfree init error:', error);
+            console.error('❌ Cashfree init error:', error);
+            showError(3, 'Failed to initialize payment system: ' + error.message);
         }
     }
 
     // ==================== SPEECH RECOGNITION ====================
     function initSpeech() {
-        // Check if page is served over HTTPS (required for speech recognition in production)
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            document.getElementById('speechNotSupported').innerHTML = 
-                '⚠️ Speech recognition requires HTTPS. Please enable HTTPS or use manual input.';
-            document.getElementById('speechNotSupported').style.display = 'block';
-            document.getElementById('micContainer').style.display = 'none';
-            return;
-        }
+    // Check if HTTPS is available (required for speech recognition)
+    const isSecure = window.location.protocol === 'https:' || 
+                     window.location.hostname === 'localhost' ||
+                     window.location.hostname === '127.0.0.1';
+    
+    if (!isSecure) {
+        console.warn('⚠️ Site not served over HTTPS - speech recognition may not work');
+    }
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-        if (!SpeechRecognition) {
-            document.getElementById('speechNotSupported').style.display = 'block';
-            document.getElementById('micContainer').style.display = 'none';
-            return;
-        }
+    if (!SpeechRecognition) {
+        document.getElementById('speechNotSupported').innerHTML = 
+            '⚠️ Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.';
+        document.getElementById('speechNotSupported').style.display = 'block';
+        document.getElementById('micContainer').style.display = 'none';
+        return;
+    }
 
+    try {
         recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = true;
@@ -607,366 +616,476 @@
         recognition.maxAlternatives = 3;
 
         recognition.onstart = () => {
+            console.log('🎤 Speech recognition started');
             isListening = true;
             updateMicUI();
+            hideError(2);
         };
 
         recognition.onend = () => {
+            console.log('🎤 Speech recognition ended');
             isListening = false;
             updateMicUI();
         };
 
         recognition.onerror = (event) => {
-            console.error('Speech error:', event.error);
-        
-            // Handle specific errors with helpful messages
-            if (event.error === 'not-allowed') {
-                showError(2, 'Microphone access denied! Please allow microphone in browser settings.');
-            } else if (event.error === 'no-speech') {
-                showError(2, 'No speech detected. Please try again or type the amount.');
-            } else if (event.error === 'network') {
-                showError(2, 'Network error. Speech recognition requires HTTPS. Please type the amount instead.');
-                // Hide mic button after network error
-                document.getElementById('micContainer').style.display = 'none';
-            } else if (event.error === 'aborted') {
-                // Silent - user stopped recording
-            } else {
-                showError(2, 'Speech error: ' + event.error + '. Please type the amount.');
-            }
-        
+            console.error('🎤 Speech error:', event.error);
+            
             isListening = false;
             updateMicUI();
+
+            // Handle specific errors
+            switch(event.error) {
+                case 'not-allowed':
+                case 'service-not-allowed':
+                    showError(2, '⚠️ Microphone access denied! Please allow microphone in browser settings and try again.');
+                    document.getElementById('micContainer').style.display = 'none';
+                    break;
+                    
+                case 'no-speech':
+                    showError(2, '🔇 No speech detected. Please speak clearly or type the amount manually.');
+                    break;
+                    
+                case 'network':
+                    // Don't show error for network issues in production
+                    if (window.location.protocol === 'https:') {
+                        showError(2, '🌐 Network error. Please check your connection and try again.');
+                    } else {
+                        // If not HTTPS, speech won't work reliably
+                        showError(2, '⚠️ Voice input requires HTTPS. Please type the amount instead.');
+                        document.getElementById('micContainer').style.display = 'none';
+                    }
+                    break;
+                    
+                case 'audio-capture':
+                    showError(2, '🎤 Microphone not found. Please type the amount manually.');
+                    document.getElementById('micContainer').style.display = 'none';
+                    break;
+                    
+                case 'aborted':
+                    // Silent - user stopped recording
+                    break;
+                    
+                default:
+                    // For unknown errors, allow typing
+                    showError(2, `Speech error: ${event.error}. Please type the amount instead.`);
+            }
         };
 
         recognition.onresult = (event) => {
             let transcript = '';
+            let isFinal = false;
+
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 transcript += event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    isFinal = true;
+                }
             }
 
+            console.log('🎤 Heard:', transcript, '(final:', isFinal + ')');
             showTranscript(transcript);
 
-            if (event.results[event.results.length - 1].isFinal) {
+            if (isFinal) {
                 const parsed = parseAmount(transcript);
                 if (parsed > 0) {
                     document.getElementById('amountInput').value = parsed;
                     hideError(2);
+                    console.log('✅ Parsed amount:', parsed);
                 } else {
-                    showError(2, 'Could not understand amount. Try saying "five hundred" or type it manually');
+                    showError(2, '❌ Could not understand amount. Try: "five hundred" or "1000 rupees"');
                 }
             }
         };
+
+        console.log('✅ Speech recognition initialized');
+
+    } catch (error) {
+        console.error('❌ Failed to initialize speech:', error);
+        document.getElementById('speechNotSupported').innerHTML = 
+            '⚠️ Speech recognition initialization failed. Please type the amount.';
+        document.getElementById('speechNotSupported').style.display = 'block';
+        document.getElementById('micContainer').style.display = 'none';
     }
+}
 
     // ==================== PARSE SPOKEN AMOUNT ====================
     function parseAmount(text) {
-        if (!text) return 0;
+    if (!text) return 0;
 
-        let lower = text.toLowerCase()
-            .replace(/rupees?/g, '')
-            .replace(/rs\.?/g, '')
-            .replace(/only/g, '')
-            .replace(/please/g, '')
-            .trim();
+    let lower = text.toLowerCase()
+        .replace(/rupees?/g, '')
+        .replace(/rs\.?/g, '')
+        .replace(/only/g, '')
+        .replace(/please/g, '')
+        .replace(/pay/g, '')
+        .trim();
 
-        // Try direct number extraction first
-        const num = lower.replace(/[^\d]/g, '');
-        if (num && !isNaN(parseInt(num))) {
-            return parseInt(num);
-        }
+    console.log('Parsing:', lower);
 
-        // Word to number mapping
-        const words = {
-            'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-            'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
-            'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19,
-            'twenty': 20, 'thirty': 30, 'forty': 40, 'fourty': 40, 'fifty': 50,
-            'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
-            'hundred': 100, 'thousand': 1000, 'lakh': 100000, 'lac': 100000
-        };
+    // Try direct number extraction first
+    const directNum = lower.replace(/[^\d]/g, '');
+    if (directNum && !isNaN(parseInt(directNum))) {
+        console.log('Direct number found:', directNum);
+        return parseInt(directNum);
+    }
 
-        const tokens = lower.split(/[\s,-]+/);
-        let result = 0;
-        let current = 0;
+    // Word to number mapping
+    const words = {
+        'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+        'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+        'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19,
+        'twenty': 20, 'thirty': 30, 'forty': 40, 'fourty': 40, 'fifty': 50,
+        'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
+        'hundred': 100, 'thousand': 1000, 'lakh': 100000, 'lac': 100000, 'lakhs': 100000
+    };
 
-        for (const token of tokens) {
-            if (words[token] !== undefined) {
-                const value = words[token];
-                if (value === 100) {
-                    current = current === 0 ? 100 : current * 100;
-                } else if (value >= 1000) {
-                    current = current === 0 ? value : current * value;
-                    result += current;
-                    current = 0;
-                } else {
-                    current += value;
-                }
+    const tokens = lower.split(/[\s,-]+/);
+    let result = 0;
+    let current = 0;
+
+    for (const token of tokens) {
+        if (words[token] !== undefined) {
+            const value = words[token];
+            if (value === 100) {
+                current = current === 0 ? 100 : current * 100;
+            } else if (value >= 1000) {
+                current = current === 0 ? value : current * value;
+                result += current;
+                current = 0;
+            } else {
+                current += value;
             }
         }
-
-        return result + current;
     }
+
+    return result + current;
+}
 
     // ==================== MICROPHONE CONTROLS ====================
     function toggleMic() {
-        if (isListening) {
-            recognition.stop();
-        } else {
-            startListening();
-        }
+    if (isListening) {
+        recognition.stop();
+    } else {
+        startListening();
+    }
+}
+
+function startListening() {
+    if (!recognition) {
+        showError(2, 'Speech recognition not available. Please type the amount.');
+        return;
     }
 
-    function startListening() {
-        if (!recognition) {
-            showError(2, 'Speech recognition not available');
-            return;
-        }
+    hideError(2);
+    hideTranscript();
 
-        hideError(2);
-        hideTranscript();
-
+    try {
+        recognition.start();
+    } catch (error) {
+        console.error('Error starting recognition:', error);
+        // If already started, stop and restart
         try {
-            recognition.start();
-        } catch (error) {
             recognition.stop();
             setTimeout(() => recognition.start(), 100);
+        } catch (e) {
+            showError(2, 'Could not start voice input. Please type the amount.');
         }
     }
+}
 
-    function updateMicUI() {
-        const btn = document.getElementById('micBtn');
-        const status = document.getElementById('micStatus');
+function updateMicUI() {
+    const btn = document.getElementById('micBtn');
+    const status = document.getElementById('micStatus');
 
-        if (isListening) {
-            btn.className = 'mic-btn listening';
-            btn.textContent = '🛑';
-            status.textContent = '🔴 Listening... Speak now!';
-        } else {
-            btn.className = 'mic-btn idle';
-            btn.textContent = '🎤';
-            status.textContent = '🎤 Tap to speak amount';
-        }
+    if (isListening) {
+        btn.className = 'mic-btn listening';
+        btn.textContent = '🛑';
+        status.textContent = '🔴 Listening... Speak now!';
+        status.style.color = '#ef4444';
+    } else {
+        btn.className = 'mic-btn idle';
+        btn.textContent = '🎤';
+        status.textContent = '🎤 Tap to speak amount';
+        status.style.color = '#9ca3af';
     }
+}
 
-    function showTranscript(text) {
-        document.getElementById('transcriptText').textContent = text;
-        document.getElementById('transcriptBox').classList.add('show');
-    }
+function showTranscript(text) {
+    document.getElementById('transcriptText').textContent = text;
+    document.getElementById('transcriptBox').classList.add('show');
+}
 
-    function hideTranscript() {
-        document.getElementById('transcriptBox').classList.remove('show');
-    }
+function hideTranscript() {
+    document.getElementById('transcriptBox').classList.remove('show');
+}
 
-    // ==================== ERROR HANDLING ====================
-    function showError(page, message) {
-        const errorBox = document.getElementById('error' + page);
+// ==================== ERROR HANDLING ====================
+function showError(page, message) {
+    const errorBox = document.getElementById('error' + page);
+    if (errorBox) {
         errorBox.querySelector('span').textContent = message;
         errorBox.classList.add('show');
     }
+}
 
-    function hideError(page) {
-        document.getElementById('error' + page).classList.remove('show');
+function hideError(page) {
+    const errorBox = document.getElementById('error' + page);
+    if (errorBox) {
+        errorBox.classList.remove('show');
     }
+}
 
+    // ==================== ERROR HANDLING ====================
+    function showError(page, message) {
+    const errorBox = document.getElementById('error' + page);
+    if (errorBox) {
+        errorBox.querySelector('span').textContent = message;
+        errorBox.classList.add('show');
+    }
+}
+
+function hideError(page) {
+    const errorBox = document.getElementById('error' + page);
+    if (errorBox) {
+        errorBox.classList.remove('show');
+    }
+}
     // ==================== PAGE NAVIGATION ====================
     function showPage(pageNumber) {
-        // Hide all pages
-        document.querySelectorAll('.page').forEach(page => {
-            page.classList.remove('active');
-        });
+    document.querySelectorAll('.page').forEach(page => {
+        page.classList.remove('active');
+    });
 
-        // Show selected page
-        document.getElementById('page' + pageNumber).classList.add('active');
+    document.getElementById('page' + pageNumber).classList.add('active');
 
-        // Update progress bar
-        for (let i = 1; i <= 4; i++) {
-            const step = document.getElementById('step' + i);
-            const line = document.getElementById('line' + (i - 1));
+    // Update progress bar
+    for (let i = 1; i <= 4; i++) {
+        const step = document.getElementById('step' + i);
+        const line = document.getElementById('line' + (i - 1));
 
-            if (i < pageNumber) {
-                step.className = 'step-circle active';
-                step.textContent = '✓';
-            } else if (i === pageNumber) {
-                step.className = 'step-circle active';
-                step.textContent = i;
-            } else {
-                step.className = 'step-circle';
-                step.textContent = i;
-            }
+        if (i < pageNumber) {
+            step.className = 'step-circle active';
+            step.textContent = '✓';
+        } else if (i === pageNumber) {
+            step.className = 'step-circle active';
+            step.textContent = i;
+        } else {
+            step.className = 'step-circle';
+            step.textContent = i;
+        }
 
-            if (line) {
-                line.className = i < pageNumber ? 'step-line active' : 'step-line';
-            }
+        if (line) {
+            line.className = i < pageNumber ? 'step-line active' : 'step-line';
         }
     }
-
+}
     // ==================== VALIDATION ====================
     function validateUPI(id) {
-        const upiRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9]+$/;
-        return upiRegex.test(id);
-    }
+    const upiRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9]+$/;
+    return upiRegex.test(id);
+}
 
     // ==================== PAGE TRANSITIONS ====================
     function goToPage2() {
-        upiId = document.getElementById('upiInput').value.trim();
+    upiId = document.getElementById('upiInput').value.trim();
 
-        if (!validateUPI(upiId)) {
-            showError(1, 'Invalid UPI ID format. Example: name@paytm, name@ybl');
-            return;
-        }
-
-        hideError(1);
-        document.getElementById('displayUpi').textContent = upiId;
-        showPage(2);
+    if (!validateUPI(upiId)) {
+        showError(1, 'Invalid UPI ID format. Example: name@paytm, name@ybl');
+        return;
     }
 
-    function goToPage3() {
-        amount = parseFloat(document.getElementById('amountInput').value);
+    hideError(1);
+    document.getElementById('displayUpi').textContent = upiId;
+    showPage(2);
+}
 
-        if (!amount || amount <= 0) {
-            showError(2, 'Please enter a valid amount');
-            return;
-        }
+function goToPage3() {
+    amount = parseFloat(document.getElementById('amountInput').value);
 
-        if (amount > 100000) {
-            showError(2, 'Amount cannot exceed ₹1,00,000');
-            return;
-        }
-
-        hideError(2);
-        document.getElementById('confirmUpi').textContent = upiId;
-        document.getElementById('confirmAmount').textContent = '₹' + amount.toLocaleString('en-IN');
-        showPage(3);
+    if (!amount || amount <= 0) {
+        showError(2, 'Please enter a valid amount');
+        return;
     }
 
+    if (amount < 1) {
+        showError(2, 'Amount must be at least ₹1');
+        return;
+    }
+
+    if (amount > 100000) {
+        showError(2, 'Amount cannot exceed ₹1,00,000');
+        return;
+    }
+
+    hideError(2);
+    document.getElementById('confirmUpi').textContent = upiId;
+    document.getElementById('confirmAmount').textContent = '₹' + amount.toLocaleString('en-IN');
+    showPage(3);
+}
     // ==================== CASHFREE PAYMENT ====================
     async function initiateCashfree() {
-        const btn = document.getElementById('payBtn');
-        const btnText = document.getElementById('payBtnText');
+    const btn = document.getElementById('payBtn');
+    const btnText = document.getElementById('payBtnText');
 
-        btn.disabled = true;
-        btnText.innerHTML = '<div class="spinner"></div> Creating Order...';
-        hideError(3);
+    btn.disabled = true;
+    btnText.innerHTML = '<div class="spinner"></div> Creating Order...';
+    hideError(3);
 
-        try {
-            // Step 1: Create order on backend
-            const response = await fetch('/api/create-order', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    amount: amount,
-                    upiId: upiId,
-                    customerName: 'Customer',
-                    customerPhone: '9999999999',
-                    customerEmail: 'customer@example.com'
-                })
-            });
+    try {
+        console.log('📝 Creating order...');
+        
+        // Step 1: Create order on backend
+        const response = await fetch('/api/create-order', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: amount,
+                upiId: upiId,
+                customerName: 'Customer',
+                customerPhone: '9999999999',
+                customerEmail: 'customer@example.com'
+            })
+        });
 
-            const data = await response.json();
+        const data = await response.json();
+        console.log('📦 Server response:', data);
 
-            if (!data.success) {
-                throw new Error(data.error || 'Order creation failed');
+        if (!data.success) {
+            throw new Error(data.error || 'Order creation failed');
+        }
+
+        if (!data.payment_session_id) {
+            throw new Error('No payment session ID received from server');
+        }
+
+        console.log('✅ Order created:', data.order_id);
+        btnText.innerHTML = '<div class="spinner"></div> Opening Payment...';
+
+        // Step 2: Initialize Cashfree if not already done
+        if (!cashfree) {
+            console.log('Initializing Cashfree SDK...');
+            await initCashfree();
+        }
+
+        // Step 3: Checkout options
+        const checkoutOptions = {
+            paymentSessionId: data.payment_session_id,
+            returnUrl: window.location.origin + '/payment-response?order_id=' + data.order_id,
+            redirectTarget: '_modal' // Opens in modal instead of redirect
+        };
+
+        console.log('💳 Opening Cashfree checkout...');
+
+        // Step 4: Open Cashfree payment
+        cashfree.checkout(checkoutOptions).then((result) => {
+            console.log('💳 Checkout result:', result);
+            
+            if (result.error) {
+                console.error('❌ Payment failed:', result.error);
+                showError(3, result.error.message || 'Payment failed');
+                btn.disabled = false;
+                btnText.textContent = 'Retry Payment';
+            } else if (result.paymentDetails) {
+                console.log('✅ Payment completed, verifying...');
+                verifyPayment(data.order_id);
             }
-
-            // Step 2: Initialize Cashfree if not already done
-            if (!cashfree) {
-                await initCashfree();
-            }
-
-            // Step 3: Checkout options for Cashfree
-            const checkoutOptions = {
-                paymentSessionId: data.payment_session_id,
-                returnUrl: window.location.origin + '/?order_id=' + data.order_id
-            };
-
-            // Step 4: Open Cashfree payment modal
-            cashfree.checkout(checkoutOptions).then((result) => {
-                if (result.error) {
-                    // Payment failed
-                    showError(3, result.error.message);
-                    btn.disabled = false;
-                    btnText.textContent = 'Retry Payment';
-                } else if (result.paymentDetails) {
-                    // Payment successful
-                    verifyPayment(data.order_id);
-                }
-            });
-
-        } catch (error) {
-            console.error('Payment error:', error);
-            showError(3, error.message);
+        }).catch((error) => {
+            console.error('❌ Checkout error:', error);
+            showError(3, 'Failed to open payment: ' + error.message);
             btn.disabled = false;
             btnText.textContent = 'Retry Payment';
-        }
+        });
+
+    } catch (error) {
+        console.error('❌ Payment error:', error);
+        showError(3, error.message);
+        btn.disabled = false;
+        btnText.textContent = 'Retry Payment';
     }
+}
 
     // ==================== VERIFY PAYMENT ====================
     async function verifyPayment(orderId) {
-        try {
-            const response = await fetch('/api/verify-payment', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    order_id: orderId
-                })
-            });
+    try {
+        console.log('🔍 Verifying payment...');
+        
+        const response = await fetch('/api/verify-payment', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                order_id: orderId
+            })
+        });
 
-            const data = await response.json();
+        const data = await response.json();
+        console.log('📊 Verification result:', data);
 
-            // Show success page
-            document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
-            document.getElementById('successUpi').textContent = upiId;
-            document.getElementById('successOrderId').textContent = orderId;
-            document.getElementById('successDate').textContent = new Date().toLocaleString('en-IN');
-            showPage(4);
+        // Show success page
+        document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
+        document.getElementById('successUpi').textContent = upiId;
+        document.getElementById('successOrderId').textContent = orderId;
+        document.getElementById('successDate').textContent = new Date().toLocaleString('en-IN');
+        showPage(4);
 
-        } catch (error) {
-            console.error('Verification error:', error);
-            // Still show success if order exists
-            document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
-            document.getElementById('successUpi').textContent = upiId;
-            document.getElementById('successOrderId').textContent = orderId || 'N/A';
-            document.getElementById('successDate').textContent = new Date().toLocaleString('en-IN');
-            showPage(4);
-        }
+    } catch (error) {
+        console.error('❌ Verification error:', error);
+        // Still show success page if payment was completed
+        document.getElementById('successAmount').textContent = '₹' + amount.toLocaleString('en-IN');
+        document.getElementById('successUpi').textContent = upiId;
+        document.getElementById('successOrderId').textContent = orderId || 'N/A';
+        document.getElementById('successDate').textContent = new Date().toLocaleString('en-IN');
+        showPage(4);
     }
+}
 
     // ==================== RESET PAYMENT ====================
     function resetPayment() {
-        upiId = '';
-        amount = 0;
-        document.getElementById('upiInput').value = '';
-        document.getElementById('amountInput').value = '';
-        hideTranscript();
-        hideError(1);
-        hideError(2);
-        hideError(3);
-        document.getElementById('payBtn').disabled = false;
-        document.getElementById('payBtnText').textContent = 'Pay with Cashfree';
-        showPage(1);
-    }
-
+    upiId = '';
+    amount = 0;
+    document.getElementById('upiInput').value = '';
+    document.getElementById('amountInput').value = '';
+    hideTranscript();
+    hideError(1);
+    hideError(2);
+    hideError(3);
+    document.getElementById('payBtn').disabled = false;
+    document.getElementById('payBtnText').textContent = 'Pay with Cashfree';
+    showPage(1);
+}
     // ==================== HANDLE RETURN FROM CASHFREE ====================
     window.addEventListener('load', () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const orderId = urlParams.get('order_id');
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderId = urlParams.get('order_id');
 
-        if (orderId) {
-            // User returned from payment, verify the payment
-            verifyPayment(orderId);
-        }
-    });
+    if (orderId) {
+        console.log('💳 Returned from payment, order:', orderId);
+        // User returned from payment, verify it
+        // Note: We need to extract UPI and amount from somewhere
+        // For now, we'll just redirect to success
+        window.history.replaceState({}, document.title, '/');
+    }
+});
 
     // ==================== INITIALIZE ON PAGE LOAD ====================
-    document.addEventListener('DOMContentLoaded', () => {
-        initSpeech();
-        initCashfree();
-    });
+    document.addEventListener('DOMContentLoaded', async () => {
+    console.log('🚀 Initializing app...');
+    console.log('🔒 Protocol:', window.location.protocol);
+    console.log('🌐 Hostname:', window.location.hostname);
+    
+    // Initialize Cashfree first
+    await initCashfree();
+    
+    // Then initialize speech
+    initSpeech();
+    
+    console.log('✅ App ready');
+});
 </script>
 </body>
 </html>
